@@ -39,6 +39,7 @@ class YOLODetector(ObjectDetector):
         self.runtime = resolve_device(device, use_half_precision)
         self.labels = labels or {}
         self.target_labels = {label.lower() for label in target_labels} if target_labels else set()
+        self.open_vocabulary_labels = [label for label in (target_labels or []) if label]
         self.iou = iou
         self.max_detections = max_detections
         self.graceful = graceful
@@ -56,6 +57,8 @@ class YOLODetector(ObjectDetector):
             from ultralytics import YOLO
 
             self._model = YOLO(str(Path(self.model_path)))
+            if self.open_vocabulary_labels and hasattr(self._model, "set_classes"):
+                self._model.set_classes(self.open_vocabulary_labels)
             self.logger.info("Loaded YOLO model %s on %s", self.model_path, self.runtime.device)
         except Exception as exc:
             if not self.graceful:

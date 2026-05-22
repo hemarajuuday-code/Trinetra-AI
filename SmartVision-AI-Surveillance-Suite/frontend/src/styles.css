@@ -407,9 +407,9 @@ h1 {
 
 .video-analysis-head {
   min-height: 34px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto) 30px;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 8px 10px;
   border: 1px solid #dbe4ef;
@@ -428,6 +428,41 @@ h1 {
 .video-analysis-head span {
   color: #607086;
   font-size: 12px;
+}
+
+.video-analysis-head button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d5dfeb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #526276;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.uploaded-video-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.uploaded-original,
+.uploaded-video-grid .live-tile {
+  min-height: 260px;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #111820;
+}
+
+.uploaded-original video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #000;
 }
 
 .event-clip {
@@ -692,8 +727,27 @@ h1 {
   font-weight: 700;
 }
 
+.chart-caption {
+  margin-bottom: 4px;
+  color: #607086;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chart-empty {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  color: #69788c;
+  border: 1px dashed #c8d6e6;
+  border-radius: 8px;
+  background: #f8fafd;
+  text-align: center;
+  padding: 18px;
+}
+
 .heatmap {
-  height: 220px;
+  height: 196px;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   gap: 6px;
@@ -701,7 +755,39 @@ h1 {
 
 .heatmap span {
   border-radius: 6px;
-  background: linear-gradient(180deg, #f7cf43, #e84f36);
+  background: #81c995;
+}
+
+.heatmap span.warm,
+.heatmap-legend i.warm {
+  background: #f7cf43;
+}
+
+.heatmap span.hot,
+.heatmap-legend i.hot {
+  background: #d92d20;
+}
+
+.heatmap-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  color: #607086;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.heatmap-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.heatmap-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #81c995;
 }
 
 .event-table {
@@ -1050,8 +1136,18 @@ h1 {
 
   .settings-grid,
   .model-summary,
-  .analysis-strip {
+  .analysis-strip,
+  .uploaded-video-grid {
     grid-template-columns: 1fr;
+  }
+
+  .video-analysis-head {
+    grid-template-columns: minmax(0, 1fr) 30px;
+  }
+
+  .video-analysis-head span {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .modal-backdrop {

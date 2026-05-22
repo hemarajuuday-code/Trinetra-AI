@@ -22,6 +22,52 @@ except ImportError:  # pragma: no cover
     HighwayDetector = None  # type: ignore[misc, assignment]
 
 
+WILDLIFE_ANIMAL_LABELS = {
+    "antelope",
+    "bear",
+    "bird",
+    "cat",
+    "cheetah",
+    "cow",
+    "crocodile",
+    "deer",
+    "dog",
+    "elephant",
+    "fox",
+    "giraffe",
+    "gorilla",
+    "hippopotamus",
+    "horse",
+    "jaguar",
+    "leopard",
+    "lion",
+    "monkey",
+    "panther",
+    "rhinoceros",
+    "sheep",
+    "snake",
+    "tiger",
+    "wild boar",
+    "wolf",
+    "zebra",
+}
+
+WILDLIFE_HIGH_RISK_LABELS = {
+    "bear",
+    "cheetah",
+    "crocodile",
+    "elephant",
+    "hippopotamus",
+    "jaguar",
+    "leopard",
+    "lion",
+    "panther",
+    "rhinoceros",
+    "snake",
+    "tiger",
+}
+
+
 class LiveInferenceProcessor:
     """Module-aware live detector used by the dashboard WebSocket."""
 
@@ -132,7 +178,20 @@ class LiveInferenceProcessor:
         alert_count = 0
         for detection in detections:
             tags: list[str] = []
-            if self.module_name in SECURITY_MODULES and detection.label.lower() == "person":
+            label = detection.label.lower()
+            if self.module_name == "wildlife_monitoring":
+                if label == "person":
+                    tags.append("person_alert")
+                    alert_count += 1
+                elif label in WILDLIFE_ANIMAL_LABELS:
+                    tags.append("wildlife_detected")
+                    if label in WILDLIFE_HIGH_RISK_LABELS:
+                        tags.append("high_risk_wildlife")
+                        alert_count += 1
+                elif label in {"fire", "smoke"}:
+                    tags.append("fire_smoke_alert")
+                    alert_count += 1
+            elif self.module_name in SECURITY_MODULES and label == "person":
                 tags.append("person_alert")
                 alert_count += 1
             vehicles.append(
@@ -202,6 +261,25 @@ class LiveInferenceProcessor:
                 add("Crowded aisle", "Footfall is high; review queue or staff allocation.", "warning", "crowding")
             return messages
 
+        if self.module_name == "wildlife_monitoring":
+            people = [v for v in vehicles if v.get("label", "").lower() == "person"]
+            animals = [v for v in vehicles if v.get("label", "").lower() in WILDLIFE_ANIMAL_LABELS]
+            high_risk = [v for v in animals if "high_risk_wildlife" in set(v.get("tags") or [])]
+            fire_smoke = [v for v in vehicles if "fire_smoke_alert" in set(v.get("tags") or [])]
+            if high_risk:
+                names = ", ".join(sorted({v.get("label", "animal") for v in high_risk})[:4])
+                add("High-risk wildlife detected", f"{len(high_risk)} track(s): {names}. Keep distance and review the zone.", "critical", "high_risk_wildlife")
+            if animals:
+                names = ", ".join(sorted({v.get("label", "animal") for v in animals})[:5])
+                add("Wildlife activity", f"{len(animals)} animal track(s) visible: {names}.", "info", "wildlife_detected")
+            if people:
+                add("Human activity candidate", f"{len(people)} person track(s) detected inside the wildlife view.", "critical", "person_alert")
+            if fire_smoke:
+                add("Fire or smoke candidate", f"{len(fire_smoke)} fire/smoke track(s) detected. Verify immediately.", "critical", "fire_smoke_alert")
+            if not messages:
+                add("Wildlife zone clear", "No configured animal, person, fire, or smoke detections in the current frame.", "ok")
+            return messages[:6]
+
         if self.module_name in SECURITY_MODULES:
             people = [v for v in vehicles if v.get("label", "").lower() == "person"]
             if people:
@@ -234,6 +312,9 @@ class LiveInferenceProcessor:
             "illegal_parking_detection": ("Illegal parking", AlertPriority.MEDIUM),
             "emergency_vehicle_prioritization": ("Emergency vehicle", AlertPriority.HIGH),
             "person_alert": ("Person activity", AlertPriority.HIGH),
+            "wildlife_detected": ("Wildlife activity", AlertPriority.MEDIUM),
+            "high_risk_wildlife": ("High-risk wildlife", AlertPriority.CRITICAL),
+            "fire_smoke_alert": ("Fire or smoke candidate", AlertPriority.CRITICAL),
             "traffic_density": ("Traffic density change", AlertPriority.MEDIUM),
             "parking_full": ("Parking occupancy high", AlertPriority.HIGH),
             "crowding": ("Crowding detected", AlertPriority.HIGH),

@@ -27,6 +27,8 @@ VIOLATION_TAGS = {
     "wrong_way_detection",
     "lane_violation_detection",
     "illegal_parking_detection",
+    "high_risk_wildlife",
+    "fire_smoke_alert",
 }
 
 VEHICLE_LABELS = {"car", "truck", "bus", "motorcycle", "bicycle"}

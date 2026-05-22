@@ -89,6 +89,14 @@ async function uploadVideo(file) {
   return response.json();
 }
 
+async function fetchUploadedVideo(jobId) {
+  const response = await fetch(`${API_BASE}/api/videos/${jobId}/file`, {
+    headers: { "x-api-key": API_KEY },
+  });
+  if (!response.ok) throw new Error(`${response.status}`);
+  return response.blob();
+}
+
 async function setCameraPaused(cameraId, paused, moduleName) {
   const action = paused ? "pause" : "resume";
   const query = paused ? "" : `?module=${encodeURIComponent(moduleName)}`;
@@ -282,10 +290,25 @@ function LiveTile({ camera, moduleName, useTracking = false, onOpen, onAnalysis 
   );
 }
 
-function VideoAnalysisTile({ job, moduleName, onAnalysis }) {
+function VideoAnalysisTile({ job, moduleName, onAnalysis, onClear }) {
   const [image, setImage] = useState(null);
   const [status, setStatus] = useState("Analyzing uploaded video...");
   const [detections, setDetections] = useState(null);
+  const [videoSrc, setVideoSrc] = useState(null);
+
+  useEffect(() => {
+    if (!job?.job_id) return undefined;
+    let objectUrl;
+    fetchUploadedVideo(job.job_id)
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        setVideoSrc(objectUrl);
+      })
+      .catch(() => setStatus("Uploaded video saved, but preview could not be loaded"));
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [job?.job_id]);
 
   useEffect(() => {
     if (!job?.job_id) return undefined;
@@ -315,25 +338,85 @@ function VideoAnalysisTile({ job, moduleName, onAnalysis }) {
       <div className="video-analysis-head">
         <strong>{job?.filename || "Uploaded sample"}</strong>
         <span>{status}</span>
+        <button type="button" aria-label="remove uploaded video" title="Remove uploaded video" onClick={onClear}>
+          <X size={15} />
+        </button>
       </div>
-      <div className="live-tile tracking-mode">
-        {image ? (
-          <img src={image} alt="Uploaded video detection stream" />
-        ) : (
-          <div className="video-placeholder">
-            <Video size={36} />
-            <span>Preparing uploaded video...</span>
-          </div>
-        )}
-        {detections && (
-          <div className={`detection-hud ${detections.violations ? "has-violations" : ""}`}>
-            <span>{detections.detection_count} detected</span>
-            {detections.max_speed_kmph != null && <span>Max {detections.max_speed_kmph} km/h</span>}
-            {detections.violations > 0 && <span className="violation-pill">{detections.violations} alert</span>}
-          </div>
-        )}
+      <div className="uploaded-video-grid">
+        <div className="uploaded-original">
+          {videoSrc ? (
+            <video controls autoPlay muted src={videoSrc} />
+          ) : (
+            <div className="video-placeholder">
+              <Video size={36} />
+              <span>Loading uploaded video...</span>
+            </div>
+          )}
+        </div>
+        <div className="live-tile tracking-mode">
+          {image ? (
+            <img src={image} alt="Uploaded video detection stream" />
+          ) : (
+            <div className="video-placeholder">
+              <Video size={36} />
+              <span>Preparing tracking overlay...</span>
+            </div>
+          )}
+          {detections && (
+            <div className={`detection-hud ${detections.violations ? "has-violations" : ""}`}>
+              <span>{detections.detection_count} detected</span>
+              {detections.max_speed_kmph != null && <span>Max {detections.max_speed_kmph} km/h</span>}
+              {detections.violations > 0 && <span className="violation-pill">{detections.violations} alert</span>}
+            </div>
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+function buildDetectionChart(analysis) {
+  const counts = {};
+  for (const item of analysis?.vehicles || []) {
+    const label = item.label || "object";
+    counts[label] = (counts[label] || 0) + 1;
+  }
+  return Object.entries(counts)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+}
+
+function buildEventChart(summary) {
+  return Object.entries(summary.events_by_module || {})
+    .map(([name, count]) => ({ name: titleize(name), count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+}
+
+function ActivityHeatmap({ events, analysis }) {
+  const recentScores = events.slice(0, 48).map((event) => Math.max(0.08, Math.min(1, Number(event.score) || 0.08)));
+  const liveBoost = Math.min(1, ((analysis?.detection_count || 0) + (analysis?.violations || 0) * 2) / 10);
+  const cells = Array.from({ length: 48 }, (_, idx) => {
+    const score = recentScores[idx] ?? (idx < 6 && liveBoost ? liveBoost : 0.08);
+    return (
+      <span
+        key={idx}
+        className={score >= 0.65 ? "hot" : score >= 0.3 ? "warm" : ""}
+        style={{ opacity: 0.35 + score * 0.65 }}
+        title={recentScores[idx] ? `Saved event score ${Math.round(score * 100)}%` : "No saved event in this slot"}
+      />
+    );
+  });
+  return (
+    <>
+      <div className="heatmap">{cells}</div>
+      <div className="heatmap-legend">
+        <span><i className="cool" /> Low</span>
+        <span><i className="warm" /> Medium</span>
+        <span><i className="hot" /> Alert</span>
+      </div>
+    </>
   );
 }
 
@@ -374,14 +457,6 @@ function EventTable({ events, onSelect }) {
       {!events.length && <div className="empty">No events yet</div>}
     </div>
   );
-}
-
-function Heatmap() {
-  const cells = Array.from({ length: 48 }, (_, idx) => {
-    const intensity = Math.abs(Math.sin(idx * 0.58)) * 0.9 + 0.1;
-    return <span key={idx} style={{ opacity: intensity }} />;
-  });
-  return <div className="heatmap">{cells}</div>;
 }
 
 function Timeline({ events }) {
@@ -536,10 +611,10 @@ function App() {
   const { data: storage } = useApi(`/api/storage?refresh=${refreshKey}`, {});
   const { data: cameras } = useApi(`/api/cameras?refresh=${refreshKey}`, []);
 
-  const chartData = useMemo(
-    () => Object.entries(summary.events_by_module || {}).map(([name, count]) => ({ name: titleize(name), count })),
-    [summary]
-  );
+  const detectionChartData = useMemo(() => buildDetectionChart(lastAnalysis), [lastAnalysis]);
+  const eventChartData = useMemo(() => buildEventChart(summary), [summary]);
+  const chartData = detectionChartData.length ? detectionChartData : eventChartData;
+  const chartMode = detectionChartData.length ? "Live detections by label" : "Saved events by module";
 
   const cameraList = cameras.length ? cameras : [{ camera_id: "webcam_0", name: "Webcam 1", connected: false, running: true, active: true }];
   const activeCamera = cameraList.find((camera) => camera.active) || cameraList[0];
@@ -696,7 +771,14 @@ function App() {
                 }}
               />
             )}
-            {videoJob && <VideoAnalysisTile job={videoJob} moduleName={selectedModule} onAnalysis={handleAnalysis} />}
+            {videoJob && (
+              <VideoAnalysisTile
+                job={videoJob}
+                moduleName={selectedModule}
+                onAnalysis={handleAnalysis}
+                onClear={() => setVideoJob(null)}
+              />
+            )}
           </div>
 
           <div className="panel alerts-panel">
@@ -731,20 +813,25 @@ function App() {
               <span>{lastAnalysis?.violations ?? 0}<small>alerts</small></span>
               <span>{lastAnalysis?.max_speed_kmph ?? "-"}<small>{selectedModule === "highway_surveillance" ? "km/h max" : "live score"}</small></span>
             </div>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" hide />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#2f80ed" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="chart-caption">{chartMode}</div>
+            {chartData.length ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 38 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" interval={0} angle={-24} textAnchor="end" height={54} tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#2f80ed" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="chart-empty">Run live detection or upload a video to populate the graph.</div>
+            )}
           </div>
 
           <div className="panel heat-panel">
-            <div className="panel-title"><span><Activity size={18} /> Congestion Heatmap</span></div>
-            <Heatmap />
+            <div className="panel-title"><span><Activity size={18} /> Activity Heatmap</span></div>
+            <ActivityHeatmap events={filteredEvents} analysis={lastAnalysis} />
           </div>
 
           <div className="panel events-panel">

@@ -100,7 +100,22 @@ def create_dashboard_router(camera_manager: CameraManager | None = None, reposit
             while chunk := await file.read(1024 * 1024):
                 handle.write(chunk)
         video_jobs[job_id] = target
-        return {"job_id": job_id, "filename": file.filename, "path": str(target)}
+        return {"job_id": job_id, "filename": file.filename, "path": str(target), "stream_url": f"/api/videos/{job_id}/file"}
+
+    @router.get("/videos/{job_id}/file", dependencies=[Depends(require_api_key)])
+    def uploaded_video_file(job_id: str) -> FileResponse:
+        path = video_jobs.get(job_id)
+        if not path or not path.exists():
+            raise HTTPException(status_code=404, detail="Uploaded video was not found")
+        media_type = {
+            ".avi": "video/x-msvideo",
+            ".m4v": "video/mp4",
+            ".mkv": "video/x-matroska",
+            ".mov": "video/quicktime",
+            ".mp4": "video/mp4",
+            ".webm": "video/webm",
+        }.get(path.suffix.lower(), "application/octet-stream")
+        return FileResponse(path, media_type=media_type, filename=path.name)
 
     @router.get("/cameras", dependencies=[Depends(require_api_key)])
     def cameras() -> list[dict[str, Any]]:

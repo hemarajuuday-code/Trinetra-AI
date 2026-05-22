@@ -10,13 +10,29 @@ module:
     - zone_intrusion_alerts
 
 ai:
-  model_path: yolo11n.pt
-  confidence: 0.35
+  model_path: yolov8s-worldv2.pt
+  confidence: 0.25
   image_size: 640
   device: auto
   use_half_precision: true
   target_labels:
     - person
+    - tiger
+    - lion
+    - leopard
+    - cheetah
+    - jaguar
+    - panther
+    - elephant
+    - rhinoceros
+    - hippopotamus
+    - deer
+    - antelope
+    - wild boar
+    - monkey
+    - gorilla
+    - wolf
+    - fox
     - bird
     - cat
     - dog
@@ -26,6 +42,8 @@ ai:
     - bear
     - zebra
     - giraffe
+    - snake
+    - crocodile
     - fire
     - smoke
 
